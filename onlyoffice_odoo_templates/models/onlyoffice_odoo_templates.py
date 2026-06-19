@@ -37,6 +37,12 @@ class OnlyOfficeTemplate(models.Model):
     # forms that carry no per-field "#w<N>" suffix. Per-field widths are stored in the form keys.
     # Caps the design-time label and the filled value (truncated with "…"). 0 = no limit.
     field_display_width = fields.Integer(string="Default field width (characters)", default=30)
+    # Cached OFORM field keys for the template PDF. The keys depend only on the
+    # attachment contents (not on the records being filled), so we cache them to
+    # avoid an extra synchronous docbuilder round-trip on every fill. Stored as
+    # JSON {"checksum": <attachment.checksum>, "keys": [...]} so the cache is
+    # transparently invalidated whenever the underlying PDF changes.
+    field_keys = fields.Text(string="Cached form field keys", readonly=True, copy=False)
 
     @api.onchange("name")
     def _onchange_name(self):

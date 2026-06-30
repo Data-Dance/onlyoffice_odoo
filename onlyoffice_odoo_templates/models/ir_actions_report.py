@@ -121,7 +121,7 @@ class IrActionsReport(models.Model):
                     url = next(iter(templates.values()), None)
                     if not url:
                         raise ValueError("the document generation service returned no document")
-                    response = onlyoffice_request(url=quote(url, safe="/:?=&"), method="get")
+                    response = onlyoffice_request(url=quote(url, safe="/:?=&"), method="get", env=self.env)
                     if response.status_code != 200:
                         raise ValueError(
                             f"downloading the generated document failed with HTTP {response.status_code}"
@@ -278,6 +278,7 @@ class IrActionsReport(models.Model):
                         "json": docbuilder_payload,
                         "headers": docbuilder_headers,
                     },
+                    env=self.env,
                 )
             else:
                 docbuilder_response = onlyoffice_request(
@@ -286,6 +287,7 @@ class IrActionsReport(models.Model):
                     opts={
                         "json": docbuilder_payload,
                     },
+                    env=self.env,
                 )
             docbuilder_json = docbuilder_response.json()
             if docbuilder_json.get("error"):

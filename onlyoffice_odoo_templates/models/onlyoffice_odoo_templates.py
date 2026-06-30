@@ -82,6 +82,7 @@ class OnlyOfficeTemplate(models.Model):
                         response = onlyoffice_request(
                             url=converted_result["fileUrl"],
                             method="get",
+                            env=self.env,
                         )
                         new_datas = base64.b64encode(response.content)
                         self.attachment_id.write({"datas": new_datas})
@@ -139,6 +140,7 @@ class OnlyOfficeTemplate(models.Model):
                 response = onlyoffice_request(
                     url=url,
                     method="get",
+                    env=self.env,
                 )
 
                 file_content = response.content
@@ -202,6 +204,7 @@ class OnlyOfficeTemplate(models.Model):
                     response = onlyoffice_request(
                         url=converted_result["fileUrl"],
                         method="get",
+                        env=self.env,
                     )
                     new_datas = base64.b64encode(response.content)
                     attachment.write({"datas": new_datas, "mimetype": vals.get("mimetype")})
@@ -261,6 +264,7 @@ class OnlyOfficeTemplate(models.Model):
                     "data": json.dumps(payload),
                     "headers": headers,
                 },
+                env=self.env,
             )
             if response.status_code == 200:
                 response_json = response.json()

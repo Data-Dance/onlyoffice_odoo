@@ -1,0 +1,69 @@
+.o-onlyoffice-expr-dialog {
+  min-height: 440px;
+
+  .o-onlyoffice-expr-fieldpicker {
+    width: 300px;
+    min-width: 260px;
+    height: 460px;
+
+    // ExportData renders .o-onlyoffice-fields-options (search header) plus
+    // .o-onlyoffice-fields-list; the list flex-grows and scrolls within this column.
+    .o-onlyoffice-fields-options {
+      flex: 0 0 auto;
+    }
+    .o-onlyoffice-fields-list {
+      flex: 1 1 auto;
+      min-height: 0;
+      margin: 0;
+    }
+  }
+
+  .o-onlyoffice-expr-input {
+    font-family: monospace;
+    resize: vertical;
+  }
+
+  .o-onlyoffice-expr-len-input {
+    width: 5rem;
+  }
+
+  .o-onlyoffice-expr-preview {
+    min-height: 44px;
+    background-color: var(--gray-100);
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .o-onlyoffice-expr-preview-value {
+    font-family: monospace;
+  }
+}
+
+.o-onlyoffice-expr-help {
+  min-height: 440px;
+
+  .o-onlyoffice-expr-help-table {
+    margin-bottom: 0;
+
+    td {
+      padding: 2px 8px;
+      border: 0;
+      vertical-align: top;
+    }
+    td:first-child {
+      white-space: nowrap;
+      width: 1%;
+    }
+  }
+
+  .o-onlyoffice-expr-example {
+    display: inline-block;
+    padding: 3px 8px;
+    border-radius: 4px;
+    background-color: var(--gray-100);
+    cursor: pointer;
+
+    &:hover {
+      background-color: var(--gray-300);
+    }
+  }
+}

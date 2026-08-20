@@ -66,8 +66,28 @@ oShapes.forEach((oShape) => {
   }
 })
 
+// A form key may carry a per-field width marker "#w<N>" (see FIELD_WIDTH_SUFFIX_RE in
+// controllers.py). It caps that field's filled value to N characters. Split it off before
+// resolving the value; forms without it fall back to the template default (oFieldDefaultWidth).
+function fieldKeyBase(key) {
+  var m = /^([\s\S]*)#w(\d+)$/.exec(key)
+  return m ? m[1] : key
+}
+function fieldKeyWidth(key) {
+  var m = /^([\s\S]*)#w(\d+)$/.exec(key)
+  return m ? parseInt(m[2], 10) : oFieldDefaultWidth
+}
+
 function getData(keyPath, index = 0, obj = fields) {
-  const keys = keyPath.split(" ")
+  keyPath = fieldKeyBase(keyPath)
+  // Expression fields (t-out): the key holds the expression, already evaluated in Python
+  // and stored verbatim at the top level of `fields`. Return it directly, no path walking.
+  if (keyPath.charAt(0) === "=") {
+    var exprValue = obj[keyPath]
+    return typeof exprValue === "undefined" ? "" : exprValue
+  }
+  // Field-path keys use " " (legacy) or "." (Odoo-idiomatic) as the relation separator.
+  const keys = keyPath.split(/[ .]/)
 
   // Recursive function to traverse the object and get the desired value(s)
   function traverse(obj, keys) {
@@ -106,7 +126,12 @@ function getData(keyPath, index = 0, obj = fields) {
 }
 
 function getDataArrayLength(keyPath, obj = fields) {
-  const keys = keyPath.split(" ")
+  keyPath = fieldKeyBase(keyPath)
+  // Expression fields are always scalar, never x2many arrays.
+  if (keyPath.charAt(0) === "=") {
+    return 0
+  }
+  const keys = keyPath.split(/[ .]/)
   let currentObj = obj
   for (let key of keys) {
     if (typeof currentObj === "undefined") {
@@ -306,10 +331,31 @@ function fillForm(oForm, data = null) {
   if (oFormFormType === "form" || oFormFormType === "textForm") {
     function fillTextForm(data) {
       data = String(data)
-      if (data === "false" || data === "undefined") {
+      var rawKey = oForm.GetFormKey()
+      var isExpression = fieldKeyBase(rawKey).charAt(0) === "="
+      // Cap the value to this field's width so a long result can't blow up the layout; the
+      // full value stays available in the record, only the rendered field is truncated.
+      var width = fieldKeyWidth(rawKey)
+      if (width > 0 && data.length > width) {
+        data = data.substring(0, width) + "…"
+      }
+      // An empty expression result must blank the field (a space) rather than leave it empty —
+      // otherwise the field falls back to showing its placeholder (the "ƒ …" label), which is
+      // both wide and leaks the raw expression into the filled output.
+      if (data === "false" || data === "undefined" || (isExpression && data === "")) {
         oForm.SetText(" ")
       } else {
         oForm.SetText(data)
+      }
+      // Expression fields are coloured/bolded in the editor to stand out; that styling is a
+      // form property, so reset it here to keep the filled output in the normal text style.
+      if (isExpression) {
+        try {
+          var oPr = oForm.GetTextPr()
+          oPr.SetColor(0, 0, 0, false)
+          oPr.SetBold(false)
+          oForm.SetTextPr(oPr)
+        } catch (_e) {}
       }
     }
 

@@ -21,6 +21,75 @@ from odoo.addons.onlyoffice_odoo_templates.utils import config_utils as template
 
 logger = logging.getLogger(__name__)
 
+# Form keys beginning with this sentinel hold a QWeb-style (t-out) expression to be
+# evaluated in Python against the record, instead of an Odoo field path. See
+# get_fields()/_eval_expression() below and the getData() guard in fill_template.docbuilder.
+EXPRESSION_PREFIX = "="
+
+# A form key may end with a per-field width marker "#w<N>" (N characters). It caps that field's
+# design-time label and filled value. The base key (everything before it) drives field/expression
+# resolution. Must stay in sync with the JS parsing in onlyoffice_editor.js and fill_template.docbuilder.
+FIELD_WIDTH_SUFFIX_RE = re.compile(r"(?s)^(.*)#w(\d+)$")
+
+# A tiny background ONLYOFFICE plugin (served by the routes below and injected via the editor
+# config) that adds an "Edit expression" context-menu item on expression form fields and
+# bridges the click to the Odoo editor panel. Kept in sync with the guid used in
+# onlyoffice_editor.js. The runtime Automation API connector cannot contribute context-menu
+# items (it is not a manifest-registered plugin), so this minimal plugin is required.
+EXPRESSION_PLUGIN_GUID = "asc.{A1B2C3D4-E5F6-47A8-9B0C-1D2E3F4A5B60}"
+
+EXPRESSION_PLUGIN_INDEX_HTML = """<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8"/>
+<script type="text/javascript" src="__PLUGINS_JS__"></script>
+<script type="text/javascript">
+(function (window) {
+  function currentFormKey(cb) {
+    window.Asc.plugin.executeMethod("GetCurrentContentControl", [], function (id) {
+      if (!id) { cb(null); return; }
+      window.Asc.plugin.executeMethod("GetAllContentControls", [], function (all) {
+        var form = (all || []).filter(function (c) { return c.InternalId === id; })[0];
+        cb(form && form.FormKey ? form.FormKey : null);
+      });
+    });
+  }
+  // Post the current form's key back to the editor so it can open the right dialog.
+  function bridge(type) {
+    return function () {
+      currentFormKey(function (key) {
+        if (key) { window.top.postMessage({ type: type, key: key }, "*"); }
+      });
+    };
+  }
+  window.Asc.plugin.init = function () {};
+  window.Asc.plugin.attachEvent("onContextMenuShow", function () {
+    currentFormKey(function (key) {
+      var items = [];
+      if (key && key.charAt(0) === "=") {
+        // Expression fields open the full builder (which also edits the width).
+        items = [{ id: "edit_expr", text: "Edit expression" }];
+      } else if (key) {
+        // Direct fields only carry a width, so offer the compact width prompt.
+        items = [{ id: "edit_width", text: "Edit field width" }];
+      }
+      window.Asc.plugin.executeMethod("AddContextMenuItem", [{
+        guid: window.Asc.plugin.guid,
+        items: items
+      }]);
+    });
+  });
+  // Context-menu item clicks dispatch through the dedicated contextMenuEvents registry.
+  window.Asc.plugin.attachContextMenuClickEvent("edit_expr", bridge("onlyoffice-edit-expression"));
+  window.Asc.plugin.attachContextMenuClickEvent("edit_width", bridge("onlyoffice-edit-field-width"));
+  window.Asc.plugin.button = function () {};
+})(window);
+</script>
+</head>
+<body></body>
+</html>
+"""
+
 
 class Onlyoffice_Inherited_Connector(Onlyoffice_Connector):
     @http.route("/onlyoffice/template/template_content/<string:path>", auth="public")
@@ -224,6 +293,9 @@ class OnlyofficeTemplate_Connector(http.Controller):
             logger.info(
                 "GET /onlyoffice/template/callback/docbuilder/fill_template - got %s keys", len(keys) if keys else 0
             )
+            # Default field width for forms without a per-field "#w<N>" suffix (older templates).
+            # Per-field widths are read from each form's key inside the docbuilder itself.
+            default_field_width = template.field_display_width or 0
             for record_id in record_ids:
                 fields = self.get_fields(keys, model, record_id, user)
                 fields = json.dumps(fields, ensure_ascii=False)
@@ -231,6 +303,7 @@ class OnlyofficeTemplate_Connector(http.Controller):
                 docbuilder_content += f"""
                     builder.OpenFile("{url}");
                     var fields = {fields};
+                    var oFieldDefaultWidth = {default_field_width};
                 """
                 docbuilder_content += docbuilder_script_content
 
@@ -342,6 +415,52 @@ class OnlyofficeTemplate_Connector(http.Controller):
         logger.info("GET /onlyoffice/template/callback/docbuilder/get_keys - success")
         return request.make_response(docbuilder_content, headers)
 
+    @http.route("/onlyoffice/template/plugin/config.json", auth="public")
+    def plugin_config(self):
+        config = {
+            "name": "Odoo Expressions",
+            "guid": EXPRESSION_PLUGIN_GUID,
+            "version": "1.0.0",
+            "minVersion": "8.1.0",
+            "variations": [
+                {
+                    "description": "Edit Odoo template expressions from the editor context menu.",
+                    "url": "index.html",
+                    "isViewer": False,
+                    "EditorsSupport": ["word", "cell", "slide", "pdf"],
+                    "type": "background",
+                    "initDataType": "none",
+                    "buttons": [],
+                    "events": ["onContextMenuShow", "onContextMenuClick"],
+                }
+            ],
+        }
+        return request.make_response(
+            json.dumps(config),
+            headers=[
+                ("Content-Type", "application/json"),
+                ("Access-Control-Allow-Origin", "*"),
+                ("Cache-Control", "no-store, max-age=0"),
+            ],
+        )
+
+    @http.route("/onlyoffice/template/plugin/index.html", auth="public")
+    def plugin_index(self):
+        docserver_url = config_utils.get_doc_server_public_url(request.env)
+        if not docserver_url.endswith("/"):
+            docserver_url += "/"
+        html = EXPRESSION_PLUGIN_INDEX_HTML.replace("__PLUGINS_JS__", docserver_url + "sdkjs-plugins/v1/plugins.js")
+        # Allow the ONLYOFFICE editor (a different origin) to frame this plugin page.
+        return request.make_response(
+            html,
+            headers=[
+                ("Content-Type", "text/html"),
+                ("Content-Security-Policy", "frame-ancestors *"),
+                ("X-Frame-Options", ""),
+                ("Cache-Control", "no-store, max-age=0"),
+            ],
+        )
+
     @http.route("/onlyoffice/template/download/<int:attachment_id>", auth="public")
     def download(self, attachment_id, oo_security_token):
         logger.info("GET /onlyoffice/template/download - attachment: %s", attachment_id)
@@ -368,8 +487,11 @@ class OnlyofficeTemplate_Connector(http.Controller):
         def convert_keys(input_list):
             output_dict = {}
             for item in input_list:
-                if " " in item:
-                    keys = item.split(" ")
+                # Field-path keys may use either " " (legacy) or "." (Odoo-idiomatic) as the
+                # relation separator. Odoo field names contain neither, so splitting on both
+                # is unambiguous and keeps old templates working after the switch to dots.
+                keys = re.split(r"[ .]", item)
+                if len(keys) > 1:
                     current_dict = output_dict
                     for key in keys[:-1]:
                         current_dict = current_dict.setdefault(key, {})
@@ -481,8 +603,44 @@ class OnlyofficeTemplate_Connector(http.Controller):
                     continue
             return result
 
-        keys = convert_keys(keys)
-        return get_related_field(keys, model, record_id)
+        # Split off expression keys (t-out style). They are evaluated in Python below and
+        # stored verbatim at the top level of the result; field-path keys keep the existing
+        # relation-walking behaviour.
+        # Keys may carry a per-field "#w<N>" width suffix used at fill time to cap that field's
+        # value. Strip it to the base key here (for relation-walking / expression eval); the
+        # docbuilder re-reads the suffix from each form to truncate the value individually.
+        base_keys = [self._strip_field_width_suffix(k) for k in keys]
+        expression_keys = [k for k in base_keys if isinstance(k, str) and k.startswith(EXPRESSION_PREFIX)]
+        path_keys = [k for k in base_keys if not (isinstance(k, str) and k.startswith(EXPRESSION_PREFIX))]
+
+        converted_keys = convert_keys(path_keys)
+        result = get_related_field(converted_keys, model, record_id) or {}
+
+        for expression_key in expression_keys:
+            result[expression_key] = self._eval_expression(
+                expression_key[len(EXPRESSION_PREFIX):], model, record_id, user
+            )
+
+        return result
+
+    @staticmethod
+    def _strip_field_width_suffix(key):
+        """Return the base form key without a trailing per-field ``#w<N>`` width suffix."""
+        if not isinstance(key, str):
+            return key
+        match = FIELD_WIDTH_SUFFIX_RE.match(key)
+        return match.group(1) if match else key
+
+    def _eval_expression(self, expression, model, record_id, user):
+        """Fetch the record and evaluate a QWeb-style (t-out) expression against it.
+
+        Delegates the actual evaluation to the model so the fill pipeline and the editor's
+        live-preview dialog share one implementation.
+        """
+        record = self.get_record(model, record_id, user)
+        if not record:
+            return ""
+        return request.env["onlyoffice.odoo.templates"]._eval_expression_on_record(expression, record, user)
 
     def get_record(self, model, record_id, user=None):
         logger.info("get_record - model: %s, record: %s", model, record_id)

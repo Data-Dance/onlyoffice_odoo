@@ -19,6 +19,13 @@
           <hr class="o-onlyoffice-template-separator" />
           <t t-if="state.resModel">
             <ExportData resModel="state.resModel" />
+            <div class="o-onlyoffice-template-expression">
+              <hr class="o-onlyoffice-template-separator" />
+              <div class="o-onlyoffice-expression-add" t-on-click="() => this.openExpressionDialog()">
+                <span class="o-onlyoffice-expression-add-icon fa fa-plus-circle" />
+                <span> Add expression </span>
+              </div>
+            </div>
           </t>
         </div>
         <div class="o-onlyoffice-template-editor">

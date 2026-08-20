@@ -91,6 +91,7 @@
             isFieldExpandable.bind="isFieldExpandable"
             isTechnicalName="state.isTechnicalName"
             loadFields.bind="loadFields"
+            onPick="props.onPick"
           />
         </t>
       </t>

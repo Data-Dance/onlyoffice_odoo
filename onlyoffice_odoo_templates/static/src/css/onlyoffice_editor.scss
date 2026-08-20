@@ -4,12 +4,38 @@
   .o-onlyoffice-template-fields {
     width: 320px;
     height: 100%;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
     background-color: var(--body-bg) !important;
     font-family: Arial !important;
     font-weight: 400 !important;
     font-size: 11px !important;
     line-height: 14px !important;
     letter-spacing: 2% !important;
+
+    // Pinned at the bottom of the panel so it stays visible while the field
+    // list above it flex-shrinks and scrolls internally.
+    .o-onlyoffice-template-expression {
+      flex: 0 0 auto;
+
+      .o-onlyoffice-expression-add {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 10px 16px;
+        cursor: pointer;
+        font-weight: 700;
+
+        &:hover {
+          background-color: var(--gray-200);
+        }
+
+        .o-onlyoffice-expression-add-icon {
+          color: var(--primary, #714b67);
+        }
+      }
+    }
 
     .o-onlyoffice-fields-title {
       display: flex;

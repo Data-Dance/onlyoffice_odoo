@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<templates xml:space="preserve">
+  <t t-name="onlyoffice_odoo_templates.FieldWidthDialog" owl="1">
+    <Dialog size="'sm'" title="isEdit ? 'Edit field width' : 'Insert field'">
+      <div class="mb-2">
+        <t t-if="isEdit"> Field: </t>
+        <t t-else=""> Inserting </t>
+        <strong t-esc="props.label" />.
+      </div>
+      <div class="d-flex align-items-center gap-2">
+        <label class="mb-0"> Field width </label>
+        <input
+          type="number"
+          min="0"
+          class="form-control form-control-sm"
+          style="width: 5rem"
+          t-model.number="state.fieldWidth"
+          t-on-keydown="onKeydown"
+        />
+        <span class="text-muted small"> characters — caps the filled value (0 = no limit) </span>
+      </div>
+      <t t-set-slot="footer">
+        <button class="btn btn-primary" t-on-click="confirm">
+          <t t-esc="isEdit ? 'Save' : 'Insert'" />
+        </button>
+        <button class="btn btn-secondary" t-on-click="() => this.props.close()"> Cancel </button>
+      </t>
+    </Dialog>
+  </t>
+</templates>

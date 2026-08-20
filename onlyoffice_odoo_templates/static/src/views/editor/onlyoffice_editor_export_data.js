@@ -31,6 +31,11 @@ class ExportDataItem extends Component {
         }
       }
     } else if (isUserToggle) {
+      // If a pick handler is provided and it claims the click (e.g. expression-builder
+      // mode), let it handle the field; otherwise fall back to inserting a field form.
+      if (this.props.onPick && this.props.onPick(field)) {
+        return
+      }
       this.env.bus.trigger("onlyoffice-template-create-form", field)
     }
   }
@@ -48,6 +53,7 @@ ExportDataItem.props = {
   isFieldExpandable: Function,
   isTechnicalName: Boolean,
   loadFields: Function,
+  onPick: { type: Function, optional: true },
 }
 
 export class ExportData extends Component {
@@ -197,5 +203,8 @@ ExportData.components = {
   CheckBox,
   ExportDataItem,
 }
-ExportData.props = { resModel: String }
+ExportData.props = {
+  resModel: String,
+  onPick: { type: Function, optional: true },
+}
 ExportData.template = "onlyoffice_odoo_templates.ExportData"

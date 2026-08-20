@@ -80,7 +80,10 @@
 }
 
 .o-onlyoffice-fields-list {
-  height: calc(100% - 248px);
+  // Fill the space left between the search header and the pinned expression box,
+  // shrinking as needed (min-height: 0 lets a flex child scroll instead of overflow).
+  flex: 1 1 auto;
+  min-height: 80px;
   margin: 0 16px 16px 16px;
   padding-right: 4px;
   overflow-y: scroll;

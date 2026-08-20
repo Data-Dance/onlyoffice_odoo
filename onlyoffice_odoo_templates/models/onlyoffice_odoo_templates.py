@@ -7,6 +7,11 @@ import time
 from odoo import _, api, fields, models, tools
 from odoo.exceptions import UserError
 from odoo.modules import get_module_path
+from odoo.tools import format_amount, format_date, format_datetime
+from odoo.tools.safe_eval import datetime as safe_datetime
+from odoo.tools.safe_eval import dateutil as safe_dateutil
+from odoo.tools.safe_eval import safe_eval
+from odoo.tools.safe_eval import time as safe_time
 
 from odoo.addons.onlyoffice_odoo.controllers.controllers import onlyoffice_request
 from odoo.addons.onlyoffice_odoo.utils import config_utils, file_utils, jwt_utils, url_utils
@@ -28,6 +33,10 @@ class OnlyOfficeTemplate(models.Model):
     hide_file_field = fields.Boolean(string="Hide File Field", default=False)
     attachment_id = fields.Many2one("ir.attachment", readonly=True)
     mimetype = fields.Char(default="application/pdf")
+    # Default field width (characters) pre-filled when inserting a field and used to cap older
+    # forms that carry no per-field "#w<N>" suffix. Per-field widths are stored in the form keys.
+    # Caps the design-time label and the filled value (truncated with "…"). 0 = no limit.
+    field_display_width = fields.Integer(string="Default field width (characters)", default=30)
 
     @api.onchange("name")
     def _onchange_name(self):
@@ -342,3 +351,69 @@ class OnlyOfficeTemplate(models.Model):
         if record.template_model_id != model_id:
             record.template_model_id = model_id
         return
+
+    # ------------------------------------------------------------------
+    # QWeb-style (t-out) expression evaluation
+    #
+    # Expression form fields store a "=<expr>" key (see the controllers and
+    # fill_template.docbuilder). The core lives here so it is shared by the fill
+    # pipeline and the editor's live-preview dialog (evaluate_expression_preview).
+    # ------------------------------------------------------------------
+    def _expression_eval_context(self, record, user=None):
+        env = record.env
+        return {
+            "record": record,
+            "object": record,
+            "obj": record,
+            "o": record,
+            "user": user or env.user,
+            "env": env,
+            "datetime": safe_datetime,
+            "dateutil": safe_dateutil,
+            "time": safe_time,
+            "format_date": lambda value, *args, **kwargs: format_date(env, value, *args, **kwargs),
+            "format_datetime": lambda value, *args, **kwargs: format_datetime(env, value, *args, **kwargs),
+            "format_amount": lambda amount, currency, *args, **kwargs: format_amount(
+                env, amount, currency, *args, **kwargs
+            ),
+        }
+
+    def _eval_expression_value(self, expression, record, user=None):
+        """Evaluate a t-out expression against ``record`` and return a string. Raises on error."""
+        value = safe_eval(expression, self._expression_eval_context(record, user))
+        return self._format_expression_result(value)
+
+    def _eval_expression_on_record(self, expression, record, user=None):
+        """Evaluate a t-out expression, degrading to '' on any error (used at fill time)."""
+        try:
+            return self._eval_expression_value(expression, record, user)
+        except Exception as e:
+            logger.warning("Failed to evaluate template expression %r: %s", expression, e)
+            return ""
+
+    def _format_expression_result(self, value):
+        if value is None or value is False:
+            return ""
+        if isinstance(value, models.BaseModel):
+            return ", ".join(name for name in value.mapped("display_name") if name)
+        return str(value)
+
+    @api.model
+    def evaluate_expression_preview(self, model, record_id, expression):
+        """Preview an expression against a chosen record for the editor dialog.
+
+        Returns ``{"value": <str>, "error": <str|False>}``. Unlike the fill path, this
+        surfaces evaluation errors so the author gets immediate feedback while typing.
+        """
+        if not expression or not expression.strip():
+            return {"value": "", "error": False}
+        try:
+            record = self.env[model].browse(int(record_id)).exists()
+        except Exception:
+            record = None
+        if not record:
+            return {"value": "", "error": _("Select a record to preview.")}
+        try:
+            return {"value": self._eval_expression_value(expression, record, self.env.user), "error": False}
+        except Exception as e:
+            return {"value": "", "error": str(e)}

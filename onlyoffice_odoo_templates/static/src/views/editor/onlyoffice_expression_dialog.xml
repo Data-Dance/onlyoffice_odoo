@@ -1,0 +1,126 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<templates xml:space="preserve">
+  <t t-name="onlyoffice_odoo_templates.ExpressionDialog" owl="1">
+    <Dialog size="'lg'" title="props.mode === 'edit' ? 'Edit expression' : 'Add expression'">
+      <ul class="nav nav-tabs mb-3 o-onlyoffice-expr-tabs">
+        <li class="nav-item">
+          <a
+            class="nav-link"
+            t-att-class="state.tab === 'builder' ? 'active' : ''"
+            href="#"
+            t-on-click.prevent="() => (state.tab = 'builder')"
+          >
+            Builder
+          </a>
+        </li>
+        <li class="nav-item">
+          <a
+            class="nav-link"
+            t-att-class="state.tab === 'help' ? 'active' : ''"
+            href="#"
+            t-on-click.prevent="() => (state.tab = 'help')"
+          >
+            Help
+          </a>
+        </li>
+      </ul>
+      <div class="o-onlyoffice-expr-help" t-att-class="state.tab === 'help' ? '' : 'd-none'">
+        <p class="text-muted">
+          Expressions are evaluated in Python against the selected record, like QWeb's <code>t-out</code>.
+        </p>
+        <div class="fw-bold mt-2"> Variables </div>
+        <table class="table table-sm o-onlyoffice-expr-help-table">
+          <t t-foreach="help.variables" t-as="v" t-key="v.name">
+            <tr>
+              <td>
+                <code t-esc="v.name" />
+              </td>
+              <td class="text-muted" t-esc="v.desc" />
+            </tr>
+          </t>
+        </table>
+        <div class="fw-bold mt-3"> Functions </div>
+        <table class="table table-sm o-onlyoffice-expr-help-table">
+          <t t-foreach="help.functions" t-as="f" t-key="f.name">
+            <tr>
+              <td>
+                <code t-esc="f.name" />
+              </td>
+              <td class="text-muted" t-esc="f.desc" />
+            </tr>
+          </t>
+        </table>
+        <div class="fw-bold mt-3"> Examples <span class="text-muted fw-normal">(click to use)</span></div>
+        <div class="o-onlyoffice-expr-examples d-flex flex-column gap-1">
+          <t t-foreach="help.examples" t-as="ex" t-key="ex">
+            <code class="o-onlyoffice-expr-example" t-on-click="() => this.useExample(ex)" t-esc="ex" />
+          </t>
+        </div>
+      </div>
+      <div class="o-onlyoffice-expr-dialog d-flex gap-3" t-att-class="state.tab === 'builder' ? '' : 'd-none'">
+        <div class="o-onlyoffice-expr-fieldpicker d-flex flex-column border-end pe-2">
+          <div class="fw-bold mb-1"> Insert field </div>
+          <div class="text-muted small mb-2"> Click a field to add it to the expression. </div>
+          <ExportData resModel="props.model" onPick.bind="onFieldPick" />
+        </div>
+        <div class="o-onlyoffice-expr-main d-flex flex-column flex-grow-1">
+          <label class="fw-bold mb-1"> Expression </label>
+          <textarea
+            t-ref="expr"
+            class="form-control o-onlyoffice-expr-input"
+            rows="4"
+            t-model="state.expression"
+            t-on-input="schedulePreview"
+            placeholder="record.amount_total * 1.21"
+          />
+          <div class="o-onlyoffice-expr-len d-flex align-items-center gap-2 mt-2">
+            <label class="text-muted small mb-0"> Field width </label>
+            <input
+              type="number"
+              min="0"
+              class="form-control form-control-sm o-onlyoffice-expr-len-input"
+              t-model.number="state.fieldWidth"
+            />
+            <span class="text-muted small">
+              characters — caps this field's editor label and filled value (0 = no limit).
+            </span>
+          </div>
+          <hr class="my-2" />
+          <label class="fw-bold mb-1"> Live preview </label>
+          <div class="d-flex align-items-center gap-2 mb-2">
+            <span class="text-muted small"> on record: </span>
+            <RecordSelector
+              resModel="props.model"
+              resId="state.sampleId"
+              update.bind="onSelectSample"
+              placeholder="'Pick a sample record'"
+            />
+          </div>
+          <div class="o-onlyoffice-expr-preview p-2 border rounded">
+            <t t-if="state.previewing">
+              <span class="text-muted fst-italic"> Evaluating… </span>
+            </t>
+            <t t-elif="state.previewError">
+              <span class="text-danger" t-esc="state.previewError" />
+            </t>
+            <t t-elif="!state.sampleId">
+              <span class="text-muted fst-italic"> Pick a sample record to preview the result. </span>
+            </t>
+            <t t-elif="state.preview === ''">
+              <span class="text-muted fst-italic"> (empty) </span>
+            </t>
+            <t t-else="">
+              <span class="o-onlyoffice-expr-preview-value" t-esc="state.preview" />
+            </t>
+          </div>
+        </div>
+      </div>
+      <t t-set-slot="footer">
+        <button class="btn btn-primary" t-on-click="confirm" t-att-disabled="!state.expression.trim()">
+          <t t-esc="props.mode === 'edit' ? 'Save' : 'Insert expression'" />
+        </button>
+        <button class="btn btn-secondary" t-on-click="cancel"> Cancel </button>
+      </t>
+    </Dialog>
+  </t>
+</templates>

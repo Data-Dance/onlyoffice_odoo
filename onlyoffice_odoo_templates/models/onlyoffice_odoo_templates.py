@@ -17,6 +17,34 @@ from odoo.addons.onlyoffice_odoo.controllers.controllers import onlyoffice_reque
 from odoo.addons.onlyoffice_odoo.utils import config_utils, file_utils, jwt_utils, url_utils
 from odoo.addons.onlyoffice_odoo_templates.utils import pdf_utils
 
+# A template may also be an office document rather than a PDF form. ONLYOFFICE
+# reads the form keys out of a DOCX perfectly well, and the fill saves its result
+# as PDF whatever the template's format — so nothing is lost by keeping the
+# original, while converting it to a PDF form would be: the PDF importer drops
+# form fields on the way in.
+OFFICE_TEMPLATE_MIMETYPES = {
+    "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "odt": "application/vnd.oasis.opendocument.text",
+}
+
+
+def _office_mimetype(content):
+    """The mimetype if `content` is an office document we keep as-is, else None."""
+    if not content or content[:2] != b"PK":
+        return None
+    import io
+    import zipfile
+
+    try:
+        names = set(zipfile.ZipFile(io.BytesIO(content)).namelist())
+    except Exception:
+        return None
+    if "word/document.xml" in names:
+        return OFFICE_TEMPLATE_MIMETYPES["docx"]
+    if "content.xml" in names and "mimetype" in names:
+        return OFFICE_TEMPLATE_MIMETYPES["odt"]
+    return None
+
 logger = logging.getLogger(__name__)
 
 
@@ -148,6 +176,13 @@ class OnlyOfficeTemplate(models.Model):
             except Exception as e:
                 raise UserError(_("Failed to download form")) from e
 
+        office_mimetype = None
+        if vals.get("file"):
+            try:
+                office_mimetype = _office_mimetype(base64.b64decode(vals["file"]))
+            except Exception:
+                office_mimetype = None
+
         is_pdf_form = None
         if "file" in vals and vals["file"]:
             try:
@@ -162,7 +197,13 @@ class OnlyOfficeTemplate(models.Model):
         model = self.env["ir.model"].search([("id", "=", vals["template_model_id"])], limit=1)
         vals["template_model_name"] = model.name
         vals["template_model_model"] = model.model
-        vals["mimetype"] = file_utils.get_mime_by_ext("pdf")
+        if office_mimetype:
+            # Already a template ONLYOFFICE can read: keep it, and do not convert
+            # it to a PDF form — that conversion drops the form fields.
+            is_pdf_form = True
+            vals["mimetype"] = office_mimetype
+        else:
+            vals["mimetype"] = file_utils.get_mime_by_ext("pdf")
 
         datas = vals.pop("file")
         vals.pop("hide_file_field", None)

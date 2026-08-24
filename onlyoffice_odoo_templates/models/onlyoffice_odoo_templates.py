@@ -28,6 +28,21 @@ OFFICE_TEMPLATE_MIMETYPES = {
 }
 
 
+def _template_extension(mimetype):
+    """The file extension a template of this mimetype must carry.
+
+    ONLYOFFICE decides a document's format from the extension in its title, not
+    from the bytes: a DOCX called .pdf is refused with "the file content
+    corresponds to text documents (e.g. docx), but the file has the inconsistent
+    extension: pdf". Since a template may now be an office document as well as a
+    PDF form, the name has to follow the content.
+    """
+    for extension, office_mimetype in OFFICE_TEMPLATE_MIMETYPES.items():
+        if mimetype == office_mimetype:
+            return extension
+    return "pdf"
+
+
 def _office_mimetype(content):
     """The mimetype if `content` is an office document we keep as-is, else None."""
     if not content or content[:2] != b"PK":
@@ -76,7 +91,9 @@ class OnlyOfficeTemplate(models.Model):
     @api.onchange("name")
     def _onchange_name(self):
         if self.attachment_id:
-            self.attachment_id.name = self.name + ".pdf"
+            self.attachment_id.name = self.name + "." + _template_extension(
+                self.attachment_id.mimetype
+            )
             self.attachment_id.display_name = self.name
 
     @api.depends("template_model_id")
@@ -221,7 +238,9 @@ class OnlyOfficeTemplate(models.Model):
 
         attachment = self.env["ir.attachment"].create(
             {
-                "name": vals.get("name", record.name) + ".pdf",
+                "name": vals.get("name", record.name)
+                + "."
+                + _template_extension(vals.get("mimetype")),
                 "display_name": vals.get("name", record.name),
                 "mimetype": vals.get("mimetype"),
                 "datas": datas,
